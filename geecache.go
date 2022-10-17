@@ -3,6 +3,7 @@ package geecache
 // 缓存流程控制模块
 import (
 	"fmt"
+	"geecache/singleflight"
 	"log"
 	"sync"
 )
@@ -26,7 +27,8 @@ type Group struct {
 	getter    Getter
 	mainCache cache
 	// 节点信息
-	peers PeerPicker
+	peers  PeerPicker
+	loader *singleflight.Group
 }
 
 var (
@@ -45,6 +47,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	groups[name] = g
 	return g
@@ -80,17 +83,24 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 
 // 加载数据
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.PickPeer(key); ok {
-			value, err := g.getFromPeer(peer, key)
-			if err != nil {
-				return ByteView{}, err
+	//使用 g.loader.Do 包裹 确保了并发场景下针对相同的 key，load 过程只会调用一次。
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				if value, err = g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[GeeCache] Failed to get from peer", err)
 			}
-			return value, nil
 		}
-		log.Println("[GeeCache] Failed to get from peer", err)
+
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return viewi.(ByteView), nil
 	}
-	return g.getLocally(key)
+	return
 }
 
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
