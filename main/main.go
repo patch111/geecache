@@ -71,16 +71,3 @@ func main() {
 	startCacheServe(addrMap[port], []string(addrs), gee)
 }
 
-//geecache.NewGroup("scores", 2<<10, geecache.GetterFunc(
-//func(key string) ([]byte, error) {
-//	log.Println("[SlowDB] search key", key)
-//	if v, ok := db[key]; ok {
-//		return []byte(v), nil
-//	}
-//	return nil, fmt.Errorf("%s not exist", key)
-//}))
-//
-//addr := "localhost:9999"
-//peers := geecache.NewHTTPPool(addr)
-//
-//log.Fatal(http.ListenAndServe(addr, peers))
